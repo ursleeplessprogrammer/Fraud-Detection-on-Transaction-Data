@@ -282,5 +282,13 @@ To extend the project responsibly:
 - [scikit-learn: Model Evaluation](https://scikit-learn.org/stable/modules/model_evaluation.html)
 
 ---
+## 📄 License
+
+Please refer to the repository for applicable licensing information.
+
+## 👨‍💻 Author
+
+**ursleeplessprogrammer**
+---
 
 *This repository is for educational exploration. Its anomaly flags are not confirmed fraud findings and should not be used as a standalone fraud-prevention system.*
