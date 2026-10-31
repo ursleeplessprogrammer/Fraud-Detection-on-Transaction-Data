@@ -1,0 +1,175 @@
+from pathlib import Path
+
+import joblib
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import IsolationForest
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+
+DATA_PATH = Path("data/bank_transactions_data_2.csv")
+ARTIFACTS_DIR = Path("artifacts")
+MODEL_PATH = ARTIFACTS_DIR / "anomaly_detection_pipeline.joblib"
+OUTPUT_PATH = ARTIFACTS_DIR / "transactions_scored.csv"
+
+# Starting estimate only—not the actual fraud rate.
+CONTAMINATION = 0.05
+
+ID_COLUMNS = [
+    "TransactionID",
+    "AccountID",
+    "DeviceID",
+    "IP Address",
+    "MerchantID",
+]
+
+DATE_COLUMNS = [
+    "TransactionDate",
+    "PreviousTransactionDate",
+]
+
+
+def prepare_features(data: pd.DataFrame) -> pd.DataFrame:
+    """Create model features and remove identifier columns."""
+    features = data.drop(
+        columns=[column for column in ID_COLUMNS if column in data.columns],
+        errors="ignore",
+    ).copy()
+
+    parsed_dates = {}
+
+    for column in DATE_COLUMNS:
+        if column in features.columns:
+            parsed_dates[column] = pd.to_datetime(
+                features[column],
+                errors="coerce",
+                utc=True,
+            )
+
+    if "TransactionDate" in parsed_dates:
+        transaction_date = parsed_dates["TransactionDate"]
+        features["TransactionHour"] = transaction_date.dt.hour
+        features["TransactionDayOfWeek"] = transaction_date.dt.dayofweek
+        features["TransactionMonth"] = transaction_date.dt.month
+
+    if (
+        "TransactionDate" in parsed_dates
+        and "PreviousTransactionDate" in parsed_dates
+    ):
+        elapsed = (
+            parsed_dates["TransactionDate"]
+            - parsed_dates["PreviousTransactionDate"]
+        ).dt.total_seconds()
+
+        features["SecondsSincePreviousTransaction"] = elapsed.where(
+            elapsed >= 0
+        )
+
+    features = features.drop(
+        columns=[column for column in DATE_COLUMNS if column in features.columns],
+        errors="ignore",
+    )
+
+    # Remove columns that contain no usable values.
+    features = features.dropna(axis=1, how="all")
+
+    if features.empty:
+        raise ValueError("No usable feature columns remain after preprocessing.")
+
+    return features
+
+
+def build_pipeline(features: pd.DataFrame) -> Pipeline:
+    """Create a preprocessing and anomaly-detection pipeline."""
+    numeric_columns = features.select_dtypes(include="number").columns.tolist()
+    categorical_columns = features.select_dtypes(
+        exclude="number"
+    ).columns.tolist()
+
+    transformers = []
+
+    if numeric_columns:
+        numeric_pipeline = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="median")),
+                ("scaler", StandardScaler()),
+            ]
+        )
+        transformers.append(("numeric", numeric_pipeline, numeric_columns))
+
+    if categorical_columns:
+        categorical_pipeline = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="most_frequent")),
+                ("encoder", OneHotEncoder(handle_unknown="ignore")),
+            ]
+        )
+        transformers.append(
+            ("categorical", categorical_pipeline, categorical_columns)
+        )
+
+    preprocessing = ColumnTransformer(
+        transformers=transformers,
+        remainder="drop",
+    )
+
+    model = IsolationForest(
+        n_estimators=200,
+        contamination=CONTAMINATION,
+        random_state=42,
+        n_jobs=-1,
+    )
+
+    return Pipeline(
+        steps=[
+            ("preprocessing", preprocessing),
+            ("model", model),
+        ]
+    )
+
+
+def main() -> None:
+    if not DATA_PATH.exists():
+        raise FileNotFoundError(
+            f"Could not find the dataset at: {DATA_PATH}\n"
+            "Download the CSV from Kaggle and place it in the data folder."
+        )
+
+    data = pd.read_csv(DATA_PATH)
+
+    if data.empty:
+        raise ValueError("The dataset file contains no rows.")
+
+    print(f"Loaded {len(data):,} transactions.")
+
+    features = prepare_features(data)
+    pipeline = build_pipeline(features)
+
+    # Isolation Forest returns 1 for normal rows and -1 for anomalies.
+    pipeline.fit(features)
+    predictions = pipeline.predict(features)
+    anomaly_scores = pipeline.decision_function(features)
+
+    results = data.copy()
+    results["is_anomaly"] = (predictions == -1).astype(int)
+    results["anomaly_score"] = anomaly_scores
+
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    results.to_csv(OUTPUT_PATH, index=False)
+    joblib.dump(pipeline, MODEL_PATH)
+
+    flagged_count = int(results["is_anomaly"].sum())
+
+    print(f"Flagged {flagged_count:,} transactions as anomalies.")
+    print(f"Scored transactions saved to: {OUTPUT_PATH}")
+    print(f"Trained pipeline saved to: {MODEL_PATH}")
+    print(
+        "\nImportant: anomaly flags are not confirmed fraud labels, "
+        "and anomaly scores are not fraud probabilities."
+    )
+
+
+if __name__ == "__main__":
+    main()
