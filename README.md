@@ -41,7 +41,7 @@ bank-fraud-detection/
 │   ├── anomaly_detection_pipeline.joblib
 │   ├── data_summary.txt
 │   └── transactions_scored.csv
-├── fraud_detection.py
+├── main_train.py
 └── README.md
 ```
 
