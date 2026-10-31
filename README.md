@@ -1,5 +1,10 @@
 # 🏦 Bank Transaction Anomaly Detection
 
+<p align="center">
+      <img src="https://img.shields.io/badge/Language-Python-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+      <img src="https://img.shields.io/badge/IDE-Visual%20Studio%20Code-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white" />
+</p>
+
 > An educational Python project that analyzes bank transactions and flags unusual records for review using Isolation Forest.
 
 ## 📌 Project Overview
