@@ -289,6 +289,5 @@ Please refer to the repository for applicable licensing information.
 ## 👨‍💻 Author
 
 **ursleeplessprogrammer**
----
 
 *This repository is for educational exploration. Its anomaly flags are not confirmed fraud findings and should not be used as a standalone fraud-prevention system.*
